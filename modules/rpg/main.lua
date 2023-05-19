@@ -975,8 +975,8 @@ local function on_player_used_capsule(event)
         cast_spell = Public.cast_spell
     }
 
-    local cast_spell = spell.callback(data, funcs)
-    if not cast_spell then
+    local cast_result = spell.callback(data, funcs)
+    if not cast_result.result then
         return
     end
 
@@ -987,7 +987,7 @@ local function on_player_used_capsule(event)
     rpg_t.last_spawned = game.tick + spell.cooldown
     Public.update_mana(player)
 
-    local reward_xp = spell.mana_cost * 0.085
+    local reward_xp = cast_result.mana_used * 0.085
     if reward_xp < 1 then
         reward_xp = 1
     end

@@ -135,6 +135,10 @@ local function create_projectiles(data)
     local target_pos = data.target_pos
     local range = data.range
     local projectile_types = Public.projectile_types
+    local cast_result = {
+        mana_used = 0,
+        result = false
+    }
 
     if self.aoe then
         for _ = 1, self.amount do
@@ -147,6 +151,12 @@ local function create_projectiles(data)
                 right_bottom = {x = position.x + 2, y = position.y + 2}
             }
             do_projectile(surface, projectile_types[self.entityName].name, position, force, target_pos, range)
+
+            if self.mana_cost > 0 then
+                cast_result.mana_used = cast_result.mana_used + self.mana_cost
+            end
+
+            cast_result.result = true
             Public.remove_mana(player, self.mana_cost)
             if self.damage then
                 for _, e in pairs(surface.find_entities_filtered({area = damage_area})) do
@@ -160,6 +170,8 @@ local function create_projectiles(data)
             right_bottom = {x = position.x + 2, y = position.y + 2}
         }
         do_projectile(surface, projectile_types[self.entityName].name, position, force, target_pos, range)
+        cast_result.mana_used = self.mana_cost
+        cast_result.result = true
         Public.remove_mana(player, self.mana_cost)
 
         if self.damage then
@@ -169,8 +181,8 @@ local function create_projectiles(data)
         end
     end
 
-    Public.cast_spell(player)
-    return true
+    Public.cast_spell(player, not cast_result.result)
+    return cast_result
 end
 
 local function create_entity(data)
@@ -183,11 +195,17 @@ local function create_entity(data)
     local tame_unit_effects = data.tame_unit_effects
 
     local last_spell_cast = rpg_t.last_spell_cast
+    local cast_result = {
+        result = false,
+        mana_used = 0
+    }
+
 
     if last_spell_cast then
         if Public.get_last_spell_cast(player) then
             Public.cast_spell(player, true)
-            return false
+
+            return cast_result
         end
     end
 
@@ -198,14 +216,11 @@ local function create_entity(data)
             local e = surface.create_entity({name = self.entityName, position = position, force = force})
             tame_unit_effects(player, e)
             Public.remove_mana(player, self.mana_cost)
-            return true
-        else
-            Public.cast_spell(player, true)
-            return false
+            
+            cast_result.result = true
+            cast_result.mana_used = self.mana_cost
         end
-    end
-
-    if self.aoe then
+    elseif self.aoe then
         local has_cast = false
         for x = 1, -1, -1 do
             for y = 1, -1, -1 do
@@ -215,37 +230,37 @@ local function create_entity(data)
                         break
                     end
                     local e = surface.create_entity({name = self.entityName, position = pos, force = force})
-                    has_cast = true
                     e.direction = player.character.direction
                     Public.remove_mana(player, self.mana_cost)
+                    cast_result.mana_used = cast_result.mana_used + self.mana_cost
+                    cast_result.result = true
                 end
             end
         end
-        if has_cast then
-            return true
-        else
-            Public.cast_spell(player, true)
-            return false
-        end
+       
     else
         if surface.can_place_entity {name = self.entityName, position = position} then
             local e = surface.create_entity({name = self.entityName, position = position, force = force})
             e.direction = player.character.direction
             Public.remove_mana(player, self.mana_cost)
-        else
-            Public.cast_spell(player, true)
-            return false
+            cast_result.mana_used = self.mana_cost
+            cast_result.result = true
         end
     end
 
-    Public.cast_spell(player)
-    return true
+    Public.cast_spell(player, not cast_result.result)
+    return cast_result
 end
+
 
 local function insert_onto(data)
     local self = data.self
     local player = data.player
     local rpg_t = data.rpg_t
+    local cast_result = {
+        result = false,
+        mana_used = 0
+    }
 
     if self.aoe then
         for _ = 1, self.amount do
@@ -255,14 +270,18 @@ local function insert_onto(data)
 
             player.insert({name = self.entityName, count = self.amount})
             Public.remove_mana(player, self.mana_cost)
+            cast_result.mana_used = cast_result.mana_used + self.mana_cost
+            cast_result.result = true
         end
     else
         player.insert({name = self.entityName, count = self.amount})
         Public.remove_mana(player, self.mana_cost)
+        cast_result.mana_used = self.mana_cost
+        cast_result.result = true
     end
 
-    Public.cast_spell(player)
-    return true
+    Public.cast_spell(player, not cast_result.result)
+    return cast_result
 end
 
 spells[#spells + 1] = {
@@ -757,6 +776,10 @@ spells[#spells + 1] = {
         }
 
         local detonate_chest
+        local cast_result = {
+            mana_used = 0,
+            result = false
+        }
         for i = 1, #entities do
             local e = entities[i]
             detonate_chest = e
@@ -765,10 +788,16 @@ spells[#spells + 1] = {
             local success = Explosives.detonate_chest(detonate_chest)
             if success then
                 Public.remove_mana(player, self.mana_cost)
+                cast_result.result = true
+                cast_result.mana_used = self.mana_cost
+
             end
             Public.cast_spell(player)
-            return true
+        else
+            Public.cast_spell(player, true)
         end
+
+        return cast_result
     end
 }
 spells[#spells + 1] = {
@@ -806,7 +835,6 @@ spells[#spells + 1] = {
                 if entity.prototype.max_health ~= entity.health then
                     if self.mana_cost < rpg_t.mana then
                         Task.set_timeout_in_ticks(10, repair_buildings, {entity = entity})
-                        Public.remove_mana(player, self.mana_cost)
                     end
                 end
             end,
@@ -815,7 +843,11 @@ spells[#spells + 1] = {
 
         Public.cast_spell(player)
         Public.remove_mana(player, self.mana_cost)
-        return true
+
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 spells[#spells + 1] = {
@@ -855,7 +887,11 @@ spells[#spells + 1] = {
 
         Public.remove_mana(player, self.mana_cost)
         Public.cast_spell(player)
-        return true
+
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 spells[#spells + 1] = {
@@ -964,7 +1000,10 @@ spells[#spells + 1] = {
         Public.suicidal_comfylatron(position, surface)
         Public.cast_spell(player)
         Public.remove_mana(player, self.mana_cost)
-        return true
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 spells[#spells + 1] = {
@@ -1016,7 +1055,11 @@ spells[#spells + 1] = {
         Public.damage_player_over_time(player, random(8, 16))
         player.play_sound {path = 'utility/armor_insert', volume_modifier = 1}
         Public.cast_spell(player)
-        return true
+
+        return {
+            mana_used = data.self.mana_cost,
+            result = true
+        }
     end
 }
 spells[#spells + 1] = {
@@ -1048,7 +1091,10 @@ spells[#spells + 1] = {
         Task.set_timeout_in_ticks(300, restore_movement_speed_token, {player_index = player.index, old_speed = player.character.character_running_speed_modifier, rpg_t = rpg_t})
         player.character.character_running_speed_modifier = player.character.character_running_speed_modifier + 1
         Public.cast_spell(player)
-        return true
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 spells[#spells + 1] = {
@@ -1113,7 +1159,10 @@ spells[#spells + 1] = {
 
         Public.cast_spell(player)
         Public.remove_mana(player, self.mana_cost)
-        return true
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 
@@ -1139,7 +1188,11 @@ spells[#spells + 1] = {
 
         Public.cast_spell(player)
         Public.remove_mana(player, self.mana_cost)
-        return true
+
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 
@@ -1165,7 +1218,11 @@ spells[#spells + 1] = {
 
         Public.cast_spell(player)
         Public.remove_mana(player, self.mana_cost)
-        return true
+
+        return {
+            mana_used = self.mana_cost,
+            result = true
+        }
     end
 }
 
