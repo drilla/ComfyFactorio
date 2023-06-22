@@ -1,6 +1,7 @@
 local Public = require 'modules.rpg.table'
 local Event = require 'utils.event'
 
+
 local function on_entity_damaged(event)
     local enable_range_buffs = Public.get_range_buffs()
     if not enable_range_buffs then
@@ -35,7 +36,6 @@ local function on_entity_damaged(event)
     if not (p and p.valid) then
         return
     end
-    local modifier = Public.get_range_modifier(p)
     if ammo.name ~= 'firearm-magazine' and ammo.name ~= 'piercing-rounds-magazine' and ammo.name ~= 'uranium-rounds-magazine' then
         return
     end
@@ -44,6 +44,7 @@ local function on_entity_damaged(event)
         return
     end
 
+    local modifier = Public.get_range_modifier(p)
     local final_damage_amount = event.final_damage_amount
     entity.damage(final_damage_amount * modifier, player.force, 'impact', player)
 end
